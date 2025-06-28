@@ -85,7 +85,7 @@ async function performCloudConversion(
         if (completedJob.status === 'error') {
             const failedTask = completedJob.tasks?.find(t => t.status === 'error');
             console.error('[CloudConvert] Job failed:', failedTask || completedJob);
-            throw new Error(`CloudConvert job failed: ${failedTask?.message || completedJob.message || 'Unknown error'}`);
+            throw new Error(`CloudConvert job failed: ${failedTask?.message || 'A task failed without a specific message'}`);
         }
 
         const exportTask = completedJob.tasks?.find(task => task.name === 'export-file');
@@ -107,10 +107,24 @@ async function performCloudConversion(
         
         return { convertedFileBuffer, convertedFileName };
 
-    } catch (error: any) {
-        console.error('[CloudConvert] Error during conversion process:', error.response ? error.response.data : error);
-        if (job && job.id) console.error(`[CloudConvert] Failed Job ID: ${job.id}`);
-        throw new Error(`CloudConvert processing failed: ${error.message}`);
+    } catch (error: unknown) {
+        let message = 'Unknown conversion error';
+        if (error instanceof Error) {
+            message = error.message;
+        }
+
+        // For logging, attempt to get more specific details from the error object
+        let errorDetails: unknown = error;
+        if (typeof error === 'object' && error !== null && 'response' in error) {
+            const apiError = error as { response?: { data?: unknown } };
+            if (apiError.response?.data) {
+                errorDetails = apiError.response.data;
+            }
+        }
+        
+        console.error('[CloudConvert] Error during conversion process:', errorDetails);
+        if (job?.id) console.error(`[CloudConvert] Failed Job ID: ${job.id}`);
+        throw new Error(`CloudConvert processing failed: ${message}`);
     }
 }
 
@@ -152,14 +166,25 @@ export async function POST(req: NextRequest) {
 
     return new NextResponse(convertedFileBuffer, { status: 200, headers });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('API Route /api/convert-document Error:', error);
     let errorMessage = 'An unknown error occurred during document conversion.';
     if (error instanceof Error) {
       errorMessage = error.message;
     }
-    // Try to get more specific details from cloud convert errors if possible
-    const details = (error as any).details || (error instanceof Error && (error as any).response?.data) || null;
+    
+    // Safely extract potential 'details' or 'response.data' from the error object
+    let details: unknown = null;
+    if (typeof error === 'object' && error !== null) {
+      if ('details' in error) {
+        details = (error as { details: unknown }).details;
+      } else if ('response' in error) {
+        // This is a common pattern for axios errors, which CloudConvert SDK might use
+        const errWithResponse = error as { response?: { data?: unknown } };
+        details = errWithResponse.response?.data ?? null;
+      }
+    }
+
     return NextResponse.json({ error: errorMessage, details: details }, { status: 500 });
   }
   // No finally block needed for temp dir cleanup as performCloudConversion handles its own temp files
