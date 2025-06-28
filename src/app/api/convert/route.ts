@@ -12,11 +12,8 @@ const SUPPORTED_FORMATS: Record<string, { mime: string; sharpFormat: keyof sharp
 };
 
 // Simpler approach for Content-Disposition filename encoding
-// This relies more on the browser correctly interpreting filename*
-// and provides a very generic fallback for filename=
 function getSafeAsciiFilename(originalFilename: string, targetFormat: string): string {
     const namePart = originalFilename.substring(0, originalFilename.lastIndexOf('.')) || originalFilename;
-    // Replace any non-ASCII or problematic characters with a single underscore for the fallback
     const safeNamePart = namePart.replace(/[^\x20-\x7E]/g, '_').replace(/[\\/:*?"<>|]/g, '_');
     return `${safeNamePart}.${targetFormat}`;
 }
@@ -47,46 +44,43 @@ export async function POST(req: NextRequest) {
     const imageBuffer = Buffer.from(await file.arrayBuffer());
     const { sharpFormat, mime } = SUPPORTED_FORMATS[targetFormat];
     
-    const sharpInstance = sharp(imageBuffer);
-    // It's good practice to await metadata to catch issues early if the input isn't a valid image
-    await sharpInstance.metadata().catch(metaError => {
+    // --- CORRECTED LOGIC FOR ANIMATION ---
+
+    // 1. Get metadata from a temporary sharp instance to check for animation.
+    const metadata = await sharp(imageBuffer).metadata().catch(metaError => {
         console.error("API Error: Failed to get image metadata with Sharp:", metaError);
         throw new Error(`Could not read image metadata. The file might not be a supported image or is corrupted. Sharp error: ${metaError instanceof Error ? metaError.message : String(metaError)}`);
     });
+
+    // 2. Determine if animation should be used.
+    const isInputAnimated = metadata.pages && metadata.pages > 1;
+    const canOutputBeAnimated = sharpFormat === 'gif' || sharpFormat === 'webp' || sharpFormat === 'avif';
+    const useAnimation = isInputAnimated && canOutputBeAnimated;
     
-    // Re-check if animated is needed based on sharp's capabilities for the target format
-    const metadata = await sharpInstance.metadata(); // get it again after initial check
-    if (metadata.pages && metadata.pages > 1) {
-        const canBeAnimatedOutput = sharpFormat === 'gif' || sharpFormat === 'webp' || sharpFormat === 'avif';
-        if (canBeAnimatedOutput) {
-            console.log(`Animated image (${metadata.format}) to animated ${sharpFormat}. Preserving animation.`);
-            sharpInstance.animated(true);
-        } else {
-            console.log(`Animated image (${metadata.format}) to static ${sharpFormat}. Using first frame.`);
-            // No need to explicitly set animated(false), sharp defaults to processing first frame for static output
-        }
+    if (isInputAnimated) {
+        console.log(`Animated image (${metadata.format}) detected. Using animation: ${useAnimation}`);
     }
+
+    // 3. Create the final sharp instance with the 'animated' option set correctly.
+    //    This is the key fix: 'animated' is a constructor option, not a method.
+    const sharpInstance = sharp(imageBuffer, { animated: useAnimation });
     
+    // 4. Perform the conversion.
     const convertedBuffer = await sharpInstance
       .toFormat(sharpFormat)
       .toBuffer();
     console.log(`Conversion successful. Converted buffer size: ${convertedBuffer.length} bytes`);
 
+    // --- END OF CORRECTED LOGIC ---
+
     const headers = new Headers();
     headers.set('Content-Type', mime);
 
-    // Construct the output filename: original name (without extension) + new extension
     const namePart = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
     const desiredOutputFilename = `${namePart}.${targetFormat}`;
-
-    // For filename* (UTF-8 support)
     const utf8EncodedFilename = encodeURIComponent(desiredOutputFilename);
-
-    // For filename= (basic ASCII fallback, less critical with modern browsers)
     const asciiFallback = getSafeAsciiFilename(file.name, targetFormat);
 
-    // The key is `filename*=UTF-8''${utf8EncodedFilename}`
-    // The simple `filename="${asciiFallback}"` is for very old clients.
     headers.set('Content-Disposition', `attachment; filename="${asciiFallback}"; filename*=UTF-8''${utf8EncodedFilename}`);
     
     console.log(`Sending response. Original desired: "${desiredOutputFilename}", Fallback ASCII: "${asciiFallback}", UTF-8 Encoded: "${utf8EncodedFilename}"`);
