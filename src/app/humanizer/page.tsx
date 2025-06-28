@@ -37,10 +37,14 @@ export default function TextToolPage() {
         body: JSON.stringify({ textToHumanize: inputText, desiredStyle: desiredStyle.trim() || undefined }),
       });
       const data = await response.json();
-      if (!response.ok) { throw new Error(data.error); }
+      if (!response.ok) { throw new Error(data.error || 'Failed to humanize text.'); }
       setOutputText(data.humanizedText);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) { // Fix 1: Changed 'any' to 'unknown'
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred.');
+      }
     } finally {
       setIsLoading(false);
       setLoadingStep('');
@@ -62,7 +66,7 @@ export default function TextToolPage() {
         body: JSON.stringify({ textToHumanize: inputText, desiredStyle: desiredStyle.trim() || undefined }),
       });
       const humanizeData = await humanizeRes.json();
-      if (!humanizeRes.ok) { throw new Error(humanizeData.error); }
+      if (!humanizeRes.ok) { throw new Error(humanizeData.error || 'Failed during the humanizing step.'); }
 
       setLoadingStep('Step 2: Proofreading...');
       const proofreadRes = await fetch('/api/proofread-text', {
@@ -71,11 +75,15 @@ export default function TextToolPage() {
         body: JSON.stringify({ textToProofread: humanizeData.humanizedText }),
       });
       const proofreadData = await proofreadRes.json();
-      if (!proofreadRes.ok) { throw new Error(proofreadData.error); }
+      if (!proofreadRes.ok) { throw new Error(proofreadData.error || 'Failed during the proofreading step.'); }
       setOutputText(proofreadData.correctedText);
 
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) { // Fix 2: Changed 'any' to 'unknown'
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred during the process.');
+      }
     } finally {
       setIsLoading(false);
       setLoadingStep('');
@@ -97,10 +105,14 @@ export default function TextToolPage() {
         body: JSON.stringify({ textToProofread: inputText }),
       });
       const data = await response.json();
-      if (!response.ok) { throw new Error(data.error); }
+      if (!response.ok) { throw new Error(data.error || 'Failed to proofread text.'); }
       setOutputText(data.correctedText);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) { // Fix 3: Changed 'any' to 'unknown'
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred.');
+      }
     } finally {
       setIsLoading(false);
       setLoadingStep('');

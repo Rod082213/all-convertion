@@ -1,7 +1,7 @@
 // app/transcribe/page.tsx
 "use client";
 
-import { useState, useCallback, FormEvent, MouseEvent } from 'react';
+import { useState, useCallback, MouseEvent } from 'react'; // Corrected: Removed unused 'FormEvent'
 import { useDropzone } from 'react-dropzone';
 import { UploadCloud, Loader2, FileText, AlertTriangle, XCircle, Link2 } from 'lucide-react';
 import { cn } from '@/app/lib/utils';

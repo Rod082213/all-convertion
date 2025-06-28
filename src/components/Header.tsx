@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react'; // Icons for hamburger and close
 import { motion, AnimatePresence } from 'framer-motion'; // For animations
-import { cn } from '@/app/lib/utils'; // Assuming you have this utility
+
 
 const navLinks = [
   { href: "/", label: "Image Convert" },

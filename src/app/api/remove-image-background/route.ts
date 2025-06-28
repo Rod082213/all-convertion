@@ -54,16 +54,6 @@ export async function POST(req: NextRequest) {
         const uploadStream = cloudinary.uploader.upload_stream(
             {
                 folder: "background_removed_uploads", // Optional: organize in Cloudinary
-                // Eager transformation to remove background and fetch this version
-                // The result of this eager transformation isn't directly used if we fetch the transformed URL later,
-                // but it ensures the transformation is applied.
-                // A more common way is to upload, then construct the URL with transformation.
-                // For simplicity in one step, let's try to get the URL from an eager transform if possible,
-                // otherwise, we construct it.
-                // eager: [
-                //   { effect: "background_removal", fetch_format: "png" }
-                // ],
-                // To simply upload and then construct URL:
                 resource_type: "image",
             },
             (error, result) => {
@@ -89,9 +79,6 @@ export async function POST(req: NextRequest) {
     const transformedUrl = cloudinary.url(uploadResult.public_id, {
         effect: "background_removal",
         fetch_format: "png", // Force PNG output for transparency
-        // You can add other transformations like quality, dpr, etc.
-        // quality: "auto",
-        // dpr: "auto"
     });
 
     console.log("Transformed Cloudinary URL:", transformedUrl);
@@ -109,24 +96,34 @@ export async function POST(req: NextRequest) {
 
     const responseHeaders = new Headers();
     responseHeaders.set('Content-Type', processedImageBlob.type || 'image/png');
-    // You can set Content-Disposition if you want to suggest a filename
-    // const originalNamePart = imageFile.name.substring(0, imageFile.name.lastIndexOf('.')) || imageFile.name;
-    // const outputFilename = `${originalNamePart}_no_bg.png`;
-    // responseHeaders.set('Content-Disposition', `attachment; filename="${outputFilename}"`);
-
+    
     console.log(`Successfully processed image with Cloudinary, returning blob of type: ${processedImageBlob.type}`);
     return new NextResponse(processedImageBlob, { status: 200, headers: responseHeaders });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('API Route /remove-image-background Error with Cloudinary:', error);
-    let details = (error as Error).message;
-     if ((error as any).cause) {
-        details += ` | Cause: ${JSON.stringify((error as any).cause)}`;
+    
+    let details = 'An unknown processing error occurred.';
+
+    // Check for a Cloudinary-specific error structure first
+    if (
+        typeof error === 'object' &&
+        error !== null &&
+        'http_code' in error &&
+        'message' in error
+    ) {
+        const cloudinaryError = error as { http_code: number; message: string };
+        details = `Cloudinary API Error (${cloudinaryError.http_code}): ${cloudinaryError.message}`;
+    } else if (error instanceof Error) {
+        // Fallback to a standard JavaScript Error
+        details = error.message;
+
+        // Safely check for a 'cause' property, which is becoming more common
+        if ('cause' in error) {
+            details += ` | Cause: ${JSON.stringify((error as { cause: unknown }).cause)}`;
+        }
     }
-    // Check if it's a Cloudinary specific error structure
-    if ((error as any).http_code && (error as any).message) {
-        details = `Cloudinary API Error (${(error as any).http_code}): ${(error as any).message}`;
-    }
-    return NextResponse.json({ error: 'Background removal processing failed.', details: details }, { status: 500 });
+
+    return NextResponse.json({ error: 'Background removal processing failed.', details }, { status: 500 });
   }
 }

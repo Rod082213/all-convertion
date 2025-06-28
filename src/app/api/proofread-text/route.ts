@@ -51,8 +51,15 @@ export async function POST(req: NextRequest) {
     const correctedText = result.response.text();
     if (!correctedText) { throw new Error('Failed to get corrected text from AI service.'); }
     return NextResponse.json({ correctedText });
-  } catch (error: any) {
+  } catch (error: unknown) { // Changed 'any' to 'unknown'
     console.error('API Route Error:', error);
-    return NextResponse.json({ error: `Proofreader failed: ${error.message}` }, { status: 500 });
+    
+    // Safely determine the error message
+    let errorMessage = 'An unknown error occurred.';
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+
+    return NextResponse.json({ error: `Proofreader failed: ${errorMessage}` }, { status: 500 });
   }
 }

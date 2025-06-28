@@ -23,7 +23,8 @@ export default function RemoveBackgroundPage() {
   const [processedFileName, setProcessedFileName] = useState<string | null>(null);
   const [hasAttemptedProcessing, setHasAttemptedProcessing] = useState<boolean>(false);
 
-  const resetState = (clearOriginal: boolean = true) => {
+  // Fix 1: Wrapped resetState in useCallback to make it a stable function
+  const resetState = useCallback((clearOriginal: boolean = true) => {
     if (clearOriginal) {
         setSelectedFile(null);
         setFileName(null);
@@ -37,8 +38,9 @@ export default function RemoveBackgroundPage() {
     if (clearOriginal) {
         setHasAttemptedProcessing(false);
     }
-  }
+  }, [originalPreviewUrl, processedImageUrl]); // It depends on these values for cleanup
 
+  // Fix 1 (cont.): Added the now-stable resetState to the dependency array
   const onDrop = useCallback((acceptedFiles: File[]) => {
     resetState(true);
     if (acceptedFiles && acceptedFiles.length > 0) {
@@ -58,7 +60,7 @@ export default function RemoveBackgroundPage() {
       setOriginalPreviewUrl(URL.createObjectURL(file));
       setHasAttemptedProcessing(false);
     }
-  }, []);
+  }, [resetState]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -88,11 +90,32 @@ export default function RemoveBackgroundPage() {
         body: formData,
       });
       if (!response.ok) {
-        let errorData;
-        try { errorData = await response.json(); } 
-        catch (parseErr) { errorData = { error: `Server error: ${response.status} ${response.statusText}`, details: await response.text().catch(() => "") }; }
+        let errorData: unknown; // Use unknown for max type safety
+        try {
+            // Fix 2: Removed unused 'parseErr' variable
+            errorData = await response.json();
+        } catch {
+            // If JSON parsing fails, construct a standard error object
+            const details = await response.text().catch(() => "Could not retrieve error details.");
+            errorData = { error: `Server error: ${response.status} ${response.statusText}`, details };
+        }
         console.error("API Error Response:", errorData);
-        const apiErrorMsg = (errorData as any).errors?.[0]?.title || (errorData as any).error || (errorData as any).details || `Background removal failed: ${response.status}`;
+
+        // Fix 3: Replaced 'any' casts with safe, typed property access
+        let apiErrorMsg = `An unexpected error occurred. Status: ${response.status}`;
+        if (typeof errorData === 'object' && errorData !== null) {
+            const err = errorData as Record<string, unknown>;
+            if (Array.isArray(err.errors) && err.errors.length > 0) {
+                const firstError = err.errors[0] as Record<string, unknown>;
+                if (typeof firstError.title === 'string') {
+                    apiErrorMsg = firstError.title;
+                }
+            } else if (typeof err.error === 'string') {
+                apiErrorMsg = err.error;
+            } else if (typeof err.details === 'string') {
+                apiErrorMsg = err.details;
+            }
+        }
         throw new Error(apiErrorMsg);
       }
       const blob = await response.blob();
@@ -140,18 +163,14 @@ export default function RemoveBackgroundPage() {
         </div>
       )}
       
-      {/* <div className="bg-yellow-500/20 ..."> ... Developer Note ... </div> */}
-
       <div className={`grid ${showProcessedColumn ? 'md:grid-cols-2' : 'md:grid-cols-1'} gap-8 items-start`}>
-        {/* Left Column: Upload and Original Preview */}
-        {/* MODIFIED: Removed conditional centering classes like md:max-w-lg md:mx-auto when it's the only column */}
         <div> 
           <form onSubmit={handleRemoveBackground}>
             {!selectedFile ? (
-              <div // This is the Dropzone div
+              <div
                 {...getRootProps()}
                 className={cn(
-                  "border-2 border-dashed border-slate-600 rounded-lg p-12 text-center cursor-pointer hover:border-slate-500 transition-colors duration-200 w-full", // Added w-full
+                  "border-2 border-dashed border-slate-600 rounded-lg p-12 text-center cursor-pointer hover:border-slate-500 transition-colors duration-200 w-full",
                   isDragActive && "border-purple-500 bg-slate-700/30"
                 )}
               >
@@ -165,16 +184,15 @@ export default function RemoveBackgroundPage() {
                 <p className="text-xs text-slate-500 mt-2">Supports JPG, PNG, WEBP.</p>
               </div>
             ) : (
-              // Original Image Preview section
-              <div className="mb-6 p-4 bg-slate-700/30 rounded-lg relative w-full"> {/* Added w-full */}
+              <div className="mb-6 p-4 bg-slate-700/30 rounded-lg relative w-full">
                 <button type="button" onClick={() => resetState(true)} className="absolute top-2 right-2 text-slate-400 hover:text-red-400" aria-label="Remove image">
                   <XCircle size={20} />
                 </button>
                 <h3 className="text-lg font-semibold text-slate-200 mb-3">Original Image:</h3>
-                <div className="bg-slate-800 rounded-md overflow-hidden flex items-center justify-center mx-auto" style={{ aspectRatio: '1 / 1', maxWidth: '400px', maxHeight: '400px' }}> {/* Centered image preview itself */}
+                <div className="bg-slate-800 rounded-md overflow-hidden flex items-center justify-center mx-auto" style={{ aspectRatio: '1 / 1', maxWidth: '400px', maxHeight: '400px' }}>
                   {originalPreviewUrl && <NextImage src={originalPreviewUrl} alt={fileName || "Original"} width={400} height={400} className="object-contain max-h-full w-auto" />}
                 </div>
-                <p className="text-sm text-slate-400 mt-2 truncate text-center" title={fileName || ""}>{fileName}</p> {/* Centered text */}
+                <p className="text-sm text-slate-400 mt-2 truncate text-center" title={fileName || ""}>{fileName}</p>
               </div>
             )}
 
@@ -194,7 +212,6 @@ export default function RemoveBackgroundPage() {
           </form>
         </div>
 
-        {/* Right Column: Processed Image Preview and Download */}
         {showProcessedColumn && (
           <div className="flex flex-col items-center">
             <h3 className="text-lg font-semibold text-slate-200 mb-3 text-center md:text-left">
@@ -216,7 +233,7 @@ export default function RemoveBackgroundPage() {
                     <p className="text-sm text-red-400">Could not process image.</p>
                   </div>
               )}
-              {!isProcessing && !processedImageUrl && !error && ( // Fallback placeholder if this column is shown but no specific content
+              {!isProcessing && !processedImageUrl && !error && (
                    <ImageOff className="h-12 w-12 text-slate-500" />
               )}
             </div>

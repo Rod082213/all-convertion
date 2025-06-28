@@ -28,7 +28,6 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 // This function is correct and does not need changes.
 async function extractAudioFromFile(videoPath: string, outputDir: string): Promise<string> {
-  // ... (No changes to this function)
   const uniqueSuffix = Date.now() + "_" + Math.random().toString(36).substring(2, 8);
   const audioFileName = `${path.parse(videoPath).name}_${uniqueSuffix}_audio.mp3`;
   const audioOutputPath = path.join(outputDir, audioFileName);
@@ -44,9 +43,8 @@ async function extractAudioFromFile(videoPath: string, outputDir: string): Promi
   });
 }
 
-// This function is correct and does not need changes.
+// This function had the error, which is now corrected.
 async function transcribeWithGemini(audioPath: string): Promise<string> {
-  // ... (No changes to this function)
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
     const audioBuffer = await fsPromises.readFile(audioPath);
@@ -58,14 +56,18 @@ async function transcribeWithGemini(audioPath: string): Promise<string> {
     const transcriptionText = result.response.text();
     if (!transcriptionText) { throw new Error("Could not extract text from Gemini API response."); }
     return transcriptionText;
-  } catch (error: any) {
-    throw new Error(`Gemini API transcription failed: ${error.message}`);
+  } catch (error: unknown) { // Changed 'any' to 'unknown'
+    // Safely determine the error message before re-throwing
+    let errorMessage = 'An unknown error occurred during transcription.';
+    if (error instanceof Error) {
+        errorMessage = error.message;
+    }
+    throw new Error(`Gemini API transcription failed: ${errorMessage}`);
   }
 }
 
 // This function is correct and does not need changes.
 async function downloadYouTubeAudio(videoUrl: string, outputDir: string): Promise<{ audioFilePath: string; videoTitle: string }> {
-  // ... (No changes to this function)
   const videoInfo = await play.video_info(videoUrl);
   const videoTitle = videoInfo.video_details.title || 'YouTube_Video';
   const stream = await play.stream(videoUrl, { quality: 2 });
@@ -84,7 +86,6 @@ async function downloadYouTubeAudio(videoUrl: string, outputDir: string): Promis
 
 // The main POST function logic is correct and does not need changes.
 export async function POST(req: NextRequest) {
-  // ... (No changes to this function)
   const tempSessionDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'transcribe-session-'));
   try {
     const formData = await req.formData();

@@ -48,8 +48,13 @@ export async function POST(req: NextRequest) {
     const humanizedText = result.response.text();
     if (!humanizedText) { throw new Error('Failed to get humanized text from AI service.'); }
     return NextResponse.json({ humanizedText });
-  } catch (error: any) {
+  } catch (error: unknown) { // Changed 'any' to 'unknown'
     console.error('API Route Error:', error);
-    return NextResponse.json({ error: `Humanizer failed: ${error.message}` }, { status: 500 });
+    // Safely get the error message
+    let errorMessage = 'An unknown error occurred.';
+    if (error instanceof Error) {
+        errorMessage = error.message;
+    }
+    return NextResponse.json({ error: `Humanizer failed: ${errorMessage}` }, { status: 500 });
   }
 }
