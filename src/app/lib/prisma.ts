@@ -2,8 +2,9 @@
 import { PrismaClient } from '@prisma/client';
 
 declare global {
-  // allow global `var` declarations
-  // eslint-disable-next-line no-unused-vars
+  // This is the correct way to declare a global variable for this pattern.
+  // We are telling ESLint to ignore the 'no-var' rule for this line only.
+  // eslint-disable-next-line no-var
   var prisma: PrismaClient | undefined;
 }
 
